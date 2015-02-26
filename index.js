@@ -1,11 +1,13 @@
 var app = require('express')();
+var httpclient = require('http');
 var http = require('http').Server(app);
 var io = require('socket.io')(http);
-
+var url = require('url');
 
 var VERSION = Math.floor(Math.random()*1000);
 
-var allowed_host = 'fluffy.luelistan.net:4242';
+var allowed_host = 'localhost:4242';
+//var allowed_host = 'fluffy.luelistan.net';
 var port = 4242;
 
 app.use(function(req,res,next) {
@@ -23,6 +25,31 @@ app.get('/fluffy.ogg', function(req, res){
 });
 app.get('/fluffy.gif', function(req, res){
   res.sendfile('fluffy.gif');
+});
+app.get('/text', function(req, res) {
+  var x = new Buffer(0);
+
+  var lang = url.parse(req.url, true).query.lang;
+  var text = url.parse(req.url, true).query.text;
+  var path = require('querystring').stringify({
+    'tl': lang,
+    'q': text
+  });
+
+  httpclient.get({
+    host: 'translate.google.com',
+    path: '/translate_tts?'+path //+req.arguments.toString()+'&q='
+  }, function(response) {
+    response.on('data', function(d) {
+      x = Buffer.concat([x, d]);
+    });
+
+    response.on('end', function(){
+      res.writeHead(200, { 'Content-Type': 'audio/mpeg' });
+      res.end(x);
+      x = new Buffer(0);
+    });
+  });
 });
 
 var clients = {};
@@ -63,6 +90,12 @@ io.on('connection', function(socket){
       io.sockets.emit('play',0);
     }, 1800);
   });
+  socket.on('speak', function(text, lang) {
+    io.sockets.emit('speak', text, lang);
+    setTimeout(function() {
+      io.sockets.emit('play',0);
+    }, 1800);
+  });
   socket.on('chat', function(msg) {
     try {
       if(msg.charAt(0)=="/") {
@@ -92,7 +125,6 @@ http.listen(port, function(){
 
 setInterval(function() {
 	io.sockets.emit('color', getRandomColor());
-        
 }, 10000);
 
 function getRandomColor() {
@@ -103,5 +135,3 @@ function getRandomColor() {
     }
     return color;
 }
-
-
